@@ -26,6 +26,7 @@
 
 #include <Wire.h>
 
+const float pixPerDegree = 24;
 const float frameSizePix = 768;
 float fullFrameDistanceCm = 13.3;
 
@@ -41,6 +42,9 @@ int Ix[4];
 int Iy[4];
 int s;
 
+int Ix2[4];
+int Iy2[4];
+
 void Write_2bytes(byte d1, byte d2)
 {
     Wire.beginTransmission(slaveAddress);
@@ -52,6 +56,7 @@ void setup()
 {
     slaveAddress = IRsensorAddress >> 1;   // This results in 0x21 as the address to pass to TWI
     Serial.begin(19200);
+    Serial1.begin(19200);
     pinMode(ledPin, OUTPUT);      // Set the LED pin as output
     Wire.begin();
     // IR sensor initialize
@@ -142,11 +147,49 @@ void loop()
       Serial.print("Object distance (cm): ");Serial.println(objDist);
       Serial.println(sqrt(((long)Iy[0]-Iy[1])*(Iy[0]-Iy[1]) + ((long)Ix[0]-Ix[1])*(Ix[0]-Ix[1])));
       
+      //horizontal distance in frame
       float centerX = (Ix[0]+Ix[1])/2.0f;
+      float errXCm = tan((centerX-1023/2)/pixPerDegree*3.141592/180)*objDist;
+      Serial.print("X Planar Distance (cm): ");Serial.println(errXCm);
+       
+      //vertical distance in frame
       float centerY = (Iy[0]+Iy[1])/2.0f;
-      //todo compute angle, horizontal distance, vertical distance from object center to camera center
+      float errYCm = tan((centerY - 768/2)/pixPerDegree*3.141592/180)*objDist;
+      Serial.print("Y Planar Distance (cm): ");Serial.println(errYCm);
+      
+      //orientation
+      float angX = Ix[1] - Ix[0];
+      float angY = Iy[1] - Iy[0];
+      //note atan is used instead of atan2
+      //this is purposeful since the reported angle should be the same when the beacons are rotated by 180 degrees
+      //The angle is in degrees from the positive x axis
+      float angleDeg = atan(angY/angX) * 180/3.141592;
+      Serial.print("Angle: ");Serial.print(angleDeg);Serial.println(" deg.");
       
    }
+    
+    //read slave camera
+    //while(Serial1.available());
+    Serial1.print('0');
+    while(Serial1.available() == 0);
+    
+    for(int i=0;i< 4;i++)
+    {
+      int value = Serial1.read() | (Serial1.read() << 8);
+      Ix2[i] = value;
+      value = Serial1.read() | (Serial1.read() << 8);
+      Iy2[i] = value;
+    }
+    Serial.println("coordinates2");
+    for(i=0; i<4; i++)
+    {
+      Serial.print( int(Ix2[i]) );
+      Serial.print(",");
+      Serial.print( int(Iy2[i]) );
+      if (i<3)
+        Serial.print(",");
+    }
+    Serial.println();
     
     delay(500);
 }
