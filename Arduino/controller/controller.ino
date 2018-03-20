@@ -305,8 +305,8 @@ void loop()
     ////////////////////////////////////////////////////////////////////////////
     case STATE_PU_VERIFY:
       //check whether drone has package at hook height
-      if(calculateObjPos(Ix, Iy) && objPos[2] > THRESHOLD_CARRYING_PACKAGE_MIN_CM 
-        && objPos[2] > THRESHOLD_CARRYING_PACKAGE_MAX_CM)
+      if(calculateObjPos(Ix, Iy) && objPos[2] > CARRYING_PACKAGE_MIN_CM 
+        && objPos[2] > CARRYING_PACKAGE_MAX_CM)
       {
         //if package
         verifyFailCounter = 0;
@@ -363,8 +363,8 @@ void loop()
     ////////////////////////////////////////////////////////////////////////////      
     case STATE_DO_VERIFY:
       //check whether drone has package at hook height
-      if(calculateObjPos(Ix, Iy) && objPos[2] > THRESHOLD_CARRYING_PACKAGE_MIN_CM 
-        && objPos[2] > THRESHOLD_CARRYING_PACKAGE_MAX_CM)
+      if(calculateObjPos(Ix, Iy) && objPos[2] > CARRYING_PACKAGE_MIN_CM 
+        && objPos[2] > CARRYING_PACKAGE_MAX_CM)
       {
         //if package
         verifyFailCounter+=1;
