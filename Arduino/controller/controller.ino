@@ -6,10 +6,13 @@
 * 
 */
 
+/* Variables for Controller State Machine */
 const int THRESHOLD_X = 2;
 const int THRESHOLD_Y = 2;
 const int THRESHOLD_Z = 2;
 const int THRESHOLD_Theta = 2;
+const int CARRYING_PACKAGE_MIN_CM = 30;
+const int CARRYING_PACKAGE_MAX_CM = 50;
 
 const int STATE_INIT = 0;
 
@@ -25,7 +28,7 @@ const int STATE_DO_VERIFY = 6;
 const int DO_SETPT_COUNT = 4;
 const int DO_SETPTS[DO_SETPT_COUNT][4]={{0,0,0,0},{0,0,0,0},{0,0,0,0},{0,0,0,0}};
 
-int controllerState = 0;
+int controllerState = STATE_PU_WAIT;
 int verifyFailCounter = 0;
 int currentSetptIndex = 0;
 float objPos[4];
@@ -62,6 +65,7 @@ float errs[4];
 const long MIN_LOOP_PERIOD_MILLIS = 20;
 long lastLoopTimeMillis = 0;
 
+/* For IR Camera */ 
 const float pixPerDegree = 24;
 const float frameSizePix = 768;
 float fullFrameDistanceCm = 13.3;
@@ -80,6 +84,9 @@ int s;
 int Ix2[4];
 int Iy2[4];
 
+/*
+* Helper function used to communicate with the IR camera
+*/
 void Write_2bytes(byte d1, byte d2)
 {
     Wire.beginTransmission(slaveAddress);
@@ -200,7 +207,6 @@ void setup()
     lastLoopTimeMillis = millis();
 }
 /*
-* 
 * Returns true on success; false on failure.
 * On success, objPos is updated to reflect object location in the order
 * [x, y, z, theta] in a right handed coordinate system with z facing down
@@ -279,6 +285,8 @@ void loop()
         errs[3] = PU_SETPTS[currentSetptIndex][3] - objPos[3];
 
         //TODO construct and send command to pixhawk
+        //make sure units are right
+        //need to command position or velocity??
         
         //if at setpoint (within threshold)
         if(abs(errs[0]) < THRESHOLD_X && abs(errs[1]) < THRESHOLD_Y
@@ -296,17 +304,20 @@ void loop()
     //////////////////////////VERIFY PICKUP SUCCESS/////////////////////////////
     ////////////////////////////////////////////////////////////////////////////
     case STATE_PU_VERIFY:
-      //TODO check whether drone has package at hook height
-      
-      //read camera and make sure package z is near the distance it should be when the drone is
-      //higher up off the ground
-      
-      //if no package
-      verifyFailCounter +=1;
-      controllerState = STATE_PU_WAIT;
-      //if package
-      verifyFailCounter = 0;
-      controllerState = STATE_DO_WAIT;
+      //check whether drone has package at hook height
+      if(calculateObjPos(Ix, Iy) && objPos[2] > THRESHOLD_CARRYING_PACKAGE_MIN_CM 
+        && objPos[2] > THRESHOLD_CARRYING_PACKAGE_MAX_CM)
+      {
+        //if package
+        verifyFailCounter = 0;
+        controllerState = STATE_PU_WAIT;
+      }
+      else
+      {
+        //if no package
+        verifyFailCounter+=1;
+        controllerState = STATE_DO_WAIT;
+      }
       break;
     ////////////////////////////////////////////////////////////////////////////
     //////////////////////////LOOK FOR LANDING PAD//////////////////////////////
@@ -351,15 +362,20 @@ void loop()
     /////////////////////////VERIFY DROP OFF SUCCESS////////////////////////////
     ////////////////////////////////////////////////////////////////////////////      
     case STATE_DO_VERIFY:
-      //TODO check whether drone has package at hook height
-      
-      //if package
-      verifyFailCounter+=1;
-      controllerState = STATE_DO_WAIT;
-
-      //if no package
-      verifyFailCounter = 0;
-      controllerState = STATE_PU_WAIT;
+      //check whether drone has package at hook height
+      if(calculateObjPos(Ix, Iy) && objPos[2] > THRESHOLD_CARRYING_PACKAGE_MIN_CM 
+        && objPos[2] > THRESHOLD_CARRYING_PACKAGE_MAX_CM)
+      {
+        //if package
+        verifyFailCounter+=1;
+        controllerState = STATE_DO_WAIT;
+      }
+      else
+      {
+        //if no package
+        verifyFailCounter = 0;
+        controllerState = STATE_PU_WAIT;
+      }
       break;
     ////////////////////////////////////////////////////////////////////////////
     ///////////////////////////GO BACK TO THE TOP!//////////////////////////////
