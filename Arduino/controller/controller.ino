@@ -16,20 +16,20 @@ const int STATE_INIT = 0;
 const int STATE_PU_WAIT = 1;
 const int STATE_PU_SETPT = 2;
 const int STATE_PU_VERIFY = 3;
-const int PU_SETPT_COUNT = 3;
-const int[][] PU_SETPTS = new int[PU_SETPT_COUNT][4];
+const int PU_SETPT_COUNT = 4;
+const int PU_SETPTS[PU_SETPT_COUNT][4]={{0,0,0,0},{0,0,0,0},{0,0,0,0},{0,0,0,0}};
 
 const int STATE_DO_WAIT = 4;
 const int STATE_DO_SETPT = 5;
 const int STATE_DO_VERIFY = 6;
-const int DO_SETPT_COUNT = 3;
-const int[][] DO_SETPTS = new int[DO_SETPT_COUNT][4];
+const int DO_SETPT_COUNT = 4;
+const int DO_SETPTS[DO_SETPT_COUNT][4]={{0,0,0,0},{0,0,0,0},{0,0,0,0},{0,0,0,0}};
 
 int controllerState = 0;
 int verifyFailCounter = 0;
 int currentSetptIndex = 0;
-float[] objPos[4];
-float[] errs[4];
+float objPos[4];
+float errs[4];
 
 // Wii Remote IR sensor  test sample code  by kako http://www.kako.com
 // modified output for Wii-BlobTrack program by RobotFreak http://www.letsmakerobots.com/user/1433
@@ -208,7 +208,7 @@ void setup()
 * x, y, z are in centimeters and theta is in degrees.
 * Theta is the object's angle (-90, 90] relative to the +x axis.
 */
-boolean calculateObjPos(int[] Ix, int[] Iy)
+boolean calculateObjPos(int Ix[], int Iy[])
 {
     //use pair of beacons math
     if(Ix[0] != 1023 && Ix[1] != 1023 && Iy[0] != 1023 && Iy[1] != 1023)
@@ -281,8 +281,8 @@ void loop()
         //TODO construct and send command to pixhawk
         
         //if at setpoint (within threshold)
-        if(abs(errs[0]) < THRESHOLD_X && abs(errs[1]) < THRESHOLD_Y = 2
-          && abs(errs[2]) < THRESHOLD_Z && abs(errs[3]) < THRESHOLD_Theta = 2)
+        if(abs(errs[0]) < THRESHOLD_X && abs(errs[1]) < THRESHOLD_Y
+          && abs(errs[2]) < THRESHOLD_Z && abs(errs[3]) < THRESHOLD_Theta)
         {
           currentSetptIndex ++;   
           if(currentSetptIndex == PU_SETPT_COUNT)
@@ -296,14 +296,17 @@ void loop()
     //////////////////////////VERIFY PICKUP SUCCESS/////////////////////////////
     ////////////////////////////////////////////////////////////////////////////
     case STATE_PU_VERIFY:
+      //TODO check whether drone has package at hook height
+      
       //read camera and make sure package z is near the distance it should be when the drone is
       //higher up off the ground
       
-      verifyFailCounter = ++;
-      currentState = STATE_PU_WAIT;
-      //if success
+      //if no package
+      verifyFailCounter +=1;
+      controllerState = STATE_PU_WAIT;
+      //if package
       verifyFailCounter = 0;
-      currentState = STATE_DO_WAIT;
+      controllerState = STATE_DO_WAIT;
       break;
     ////////////////////////////////////////////////////////////////////////////
     //////////////////////////LOOK FOR LANDING PAD//////////////////////////////
@@ -332,8 +335,8 @@ void loop()
         //TODO send command to pixhawk
         
          //if at setpoint (within threshold)
-        if(abs(errs[0]) < THRESHOLD_X && abs(errs[1]) < THRESHOLD_Y = 2
-          && abs(errs[2]) < THRESHOLD_Z && abs(errs[3]) < THRESHOLD_Theta = 2)
+        if(abs(errs[0]) < THRESHOLD_X && abs(errs[1]) < THRESHOLD_Y
+          && abs(errs[2]) < THRESHOLD_Z && abs(errs[3]) < THRESHOLD_Theta)
         {
           currentSetptIndex ++;   
           if(currentSetptIndex == DO_SETPT_COUNT)
@@ -348,14 +351,15 @@ void loop()
     /////////////////////////VERIFY DROP OFF SUCCESS////////////////////////////
     ////////////////////////////////////////////////////////////////////////////      
     case STATE_DO_VERIFY:
+      //TODO check whether drone has package at hook height
+      
+      //if package
+      verifyFailCounter+=1;
+      controllerState = STATE_DO_WAIT;
 
-      //if failure
-      verifyFailCounter = ++;
-      currentState = STATE_DO_WAIT;
-
-      //if success
+      //if no package
       verifyFailCounter = 0;
-      currentState = STATE_PU_WAIT;
+      controllerState = STATE_PU_WAIT;
       break;
     ////////////////////////////////////////////////////////////////////////////
     ///////////////////////////GO BACK TO THE TOP!//////////////////////////////
