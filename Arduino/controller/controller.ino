@@ -270,6 +270,10 @@ void loop()
         controllerState = STATE_PU_SETPT;
         currentSetptIndex = 0;
         //TODO need to disable autopilot mission?
+        //TODO maybe split this into two states; one where it is acceptable to detect only one
+        //beacon because the drone is too high to detect both
+        //The first would send a decrease altitude command and the drone goes to the second once both
+        //beacons are detected
       }
       break;
     ////////////////////////////////////////////////////////////////////////////
@@ -298,6 +302,7 @@ void loop()
         }
       }
       //TODO have some sort of watchdog or error check in case calculateObjPos
+      //maybe even reset cameera if it doesn't seem to be working right
       //fails too much
       break;
     ////////////////////////////////////////////////////////////////////////////
