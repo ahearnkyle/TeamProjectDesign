@@ -29,6 +29,7 @@ void loop() {
   // mavlink_msg_heartbeat_pack(system_id, component_id, &msg, type, autopilot, MAV_MODE_GUIDED_DISARMED, 0, MAV_STATE_ACTIVE);
   mavlink_msg_set_local_position_setpoint_pack(system_id, component_id, &msg, system_id, component_id, MAV_FRAME_LOCAL_NED, 100.0, 100.0, 100.0, 0.0);
   //x, y, z are all in meters because we are using the Ned coordinate system.
+  //yaw is in radians
   //MAV_FRAME_LOCAL_NED give the following Z:down,x:north, y:east
   //info about target_system and target_component at http://ardupilot.org/dev/docs/mavlink-routing-in-ardupilot.html
   //pack the message for the local movement. the message will contain long, lat, and alt so we will need to update it in the loop.
