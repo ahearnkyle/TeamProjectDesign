@@ -34,10 +34,6 @@ int currentSetptIndex = 0;
 float objPos[4];
 float errs[4];
 
-// Wii Remote IR sensor  test sample code  by kako http://www.kako.com
-// modified output for Wii-BlobTrack program by RobotFreak http://www.letsmakerobots.com/user/1433
-// modified for http://DFRobot.com by Lumi, Jan. 2014
-
 //terminology;
 //horizontal refers to the wider dimension of the camera (x coord)
 //vertical refers to the narrower dimension of the camera (y coord)
@@ -219,13 +215,14 @@ boolean calculateObjPos(int Ix[], int Iy[])
     //use pair of beacons math
     if(Ix[0] != 1023 && Ix[1] != 1023 && Iy[0] != 1023 && Iy[1] != 1023)
     {
-      float objDist = fullFrameDistanceCm * frameSizePix/sqrt(((long)Iy[0]-Iy[1])*(Iy[0]-Iy[1]) + ((long)Ix[0]-Ix[1])*(Ix[0]-Ix[1]));
+      float objDist = fullFrameDistanceCm * frameSizePix/
+	sqrt(((long)Iy[0]-Iy[1])*(Iy[0]-Iy[1]) + ((long)Ix[0]-Ix[1])*(Ix[0]-Ix[1]));
       Serial.print("Object distance (cm): ");Serial.println(objDist);
       Serial.println(sqrt(((long)Iy[0]-Iy[1])*(Iy[0]-Iy[1]) + ((long)Ix[0]-Ix[1])*(Ix[0]-Ix[1])));
       
       //horizontal distance in frame
       float centerX = (Ix[0]+Ix[1])/2.0f;
-      float errXCm = tan((centerX-1023/2)/pixPerDegree*3.141592/180)*objDist;
+      float errXCm = -tan((centerX-1023/2)/pixPerDegree*3.141592/180)*objDist;
       Serial.print("X Planar Distance (cm): ");Serial.println(errXCm);
        
       //vertical distance in frame
@@ -234,10 +231,11 @@ boolean calculateObjPos(int Ix[], int Iy[])
       Serial.print("Y Planar Distance (cm): ");Serial.println(errYCm);
       
       //orientation
-      float angX = Ix[1] - Ix[0];
+      float angX = -(Ix[1] - Ix[0]);
       float angY = Iy[1] - Iy[0];
       //note atan is used instead of atan2
-      //this is purposeful since the reported angle should be the same when the beacons are rotated by 180 degrees
+      //this is purposeful since the reported angle should be the same when the 
+      //beacons are rotated by 180 degrees
       //The angle is in degrees from the positive x axis
       float angleDeg = atan(angY/angX) * 180/3.141592;
       Serial.print("Angle: ");Serial.print(angleDeg);Serial.println(" deg.");
@@ -315,13 +313,13 @@ void loop()
       {
         //if package
         verifyFailCounter = 0;
-        controllerState = STATE_PU_WAIT;
+        controllerState = STATE_DO_WAIT;
       }
       else
       {
         //if no package
         verifyFailCounter+=1;
-        controllerState = STATE_DO_WAIT;
+        controllerState = STATE_PU_WAIT;
       }
       break;
     ////////////////////////////////////////////////////////////////////////////
