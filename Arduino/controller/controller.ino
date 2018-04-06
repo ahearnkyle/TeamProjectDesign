@@ -64,7 +64,7 @@ long lastLoopTimeMillis = 0;
 /* For IR Camera */ 
 const float pixPerDegree = 24;
 const float frameSizePix = 768;
-float fullFrameDistanceCm = 13.3;
+float fullFrameDistanceCm = 14.4;//for 8 cm apart beacons
 
 int IRsensorAddress = 0xB0;
 //int IRsensorAddress = 0x58;
