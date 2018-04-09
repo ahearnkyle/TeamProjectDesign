@@ -1,3 +1,12 @@
+/****IMPORTANT STUFF****/
+
+//TODO probably need a way to read current yaw from drone to align the camera data to the drone's coordinate
+//system before sending commands
+
+//TODO need the commands to enable guided mode and enable/disable autonomous mode
+
+/***********************/
+
 /* Controller Specification
 * 
 * Master States: pickup, drop off
@@ -34,6 +43,28 @@ int currentSetptIndex = 0;
 float objPos[4];
 float errs[4];
 
+/*
+* Mavlink communication stuff
+*/
+#include <checksum.h>
+#include <mavlink_types.h>
+#include <mavlink.h>
+#include <protocol.h>
+#include <math.h>
+
+uint8_t system_id = 100;
+uint8_t component_id = MAV_COMP_ID_IMU;
+uint8_t type = MAV_TYPE_QUADROTOR; //GCS
+uint8_t autopilot = MAV_AUTOPILOT_GENERIC; //generic
+
+uint8_t received_sysid;//51 ;
+uint8_t received_compid;// = 68;
+uint8_t GCS_UNITS = 0;
+int a = 0;
+
+/*
+* Camera stuff
+*/
 //terminology;
 //horizontal refers to the wider dimension of the camera (x coord)
 //vertical refers to the narrower dimension of the camera (y coord)
@@ -185,8 +216,10 @@ void readSlaveIRCamera()
 void setup()
 {
     slaveAddress = IRsensorAddress >> 1;   // This results in 0x21 as the address to pass to TWI
-    Serial.begin(19200);
-    Serial1.begin(19200);
+    Serial.begin(19200);  //For user communication
+    Serial1.begin(19200); //For slave arduino
+    Serial2.begin(57600); //For RXTX from Pixhawk
+
     Wire.begin();
     // IR sensor initialize
     Write_2bytes(0x30,0x01); delay(10);
@@ -255,7 +288,14 @@ void loop()
 {
   readMasterIRCamera();
   readSlaveIRCamera();
-  
+
+   mavlink_message_t msg;
+  uint8_t buf[MAVLINK_MAX_PACKET_LEN];
+
+   //TODO? Define the system type (see mavlink_types.h for list of possible types)
+
+  // mavlink_msg_heartbeat_pack(system_id, component_id, &msg, type, autopilot, MAV_MODE_GUIDED_DISARMED, 0, MAV_STATE_ACTIVE);
+
   switch(controllerState)
   {
     ////////////////////////////////////////////////////////////////////////////
@@ -286,10 +326,6 @@ void loop()
         errs[2] = PU_SETPTS[currentSetptIndex][2] - objPos[2];
         errs[3] = PU_SETPTS[currentSetptIndex][3] - objPos[3];
 
-        //TODO construct and send command to pixhawk
-        //make sure units are right
-        //need to command position or velocity??
-        
         //if at setpoint (within threshold)
         if(abs(errs[0]) < THRESHOLD_X && abs(errs[1]) < THRESHOLD_Y
           && abs(errs[2]) < THRESHOLD_Z && abs(errs[3]) < THRESHOLD_Theta)
@@ -297,6 +333,20 @@ void loop()
           currentSetptIndex ++;   
           if(currentSetptIndex == PU_SETPT_COUNT)
             controllerState = STATE_PU_VERIFY;
+        }
+        else
+        {
+          //TODO make sure data is corrected for camera angle relative to compass?
+          mavlink_msg_set_local_position_setpoint_pack(system_id, component_id, &msg, system_id, component_id, MAV_FRAME_LOCAL_NED, errs[0]/100.0, errs[1]/100.0, errs[2]/100.0, errs[3]*3.1415/180);
+          //x, y, z are all in meters because we are using the Ned coordinate system.
+          //yaw is in radians
+          //MAV_FRAME_LOCAL_NED give the following Z:down,x:north, y:east
+          //info about target_system and target_component at http://ardupilot.org/dev/docs/mavlink-routing-in-ardupilot.html
+          //pack the message for the local movement. the message will contain long, lat, and alt so we will need to update it in the loop.
+          //mavlink_msg_set_local_position_setpoint_send(comm,system_id, component_id, &msg, MAV_FRAME_LOCAL_NED, 100.0,100.0,100.0,0.0);
+          uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
+          Serial2.write(buf, len);
+          receve_msg();
         }
       }
       //TODO have some sort of watchdog or error check in case calculateObjPos
@@ -321,6 +371,9 @@ void loop()
         verifyFailCounter+=1;
         controllerState = STATE_PU_WAIT;
       }
+
+      //TODO need to enable autopilot mission?
+
       break;
     ////////////////////////////////////////////////////////////////////////////
     //////////////////////////LOOK FOR LANDING PAD//////////////////////////////
@@ -345,16 +398,28 @@ void loop()
         errs[1] = PU_SETPTS[currentSetptIndex][1] - objPos[1];
         errs[2] = PU_SETPTS[currentSetptIndex][2] - objPos[2];
         errs[3] = PU_SETPTS[currentSetptIndex][3] - objPos[3];
-
-        //TODO send command to pixhawk
         
-         //if at setpoint (within threshold)
+        //if at setpoint (within threshold)
         if(abs(errs[0]) < THRESHOLD_X && abs(errs[1]) < THRESHOLD_Y
           && abs(errs[2]) < THRESHOLD_Z && abs(errs[3]) < THRESHOLD_Theta)
         {
           currentSetptIndex ++;   
           if(currentSetptIndex == DO_SETPT_COUNT)
             controllerState = STATE_DO_VERIFY;
+        }else
+        {
+          //TODO make sure data is corrected for camera angle relative to compass?
+          mavlink_msg_set_local_position_setpoint_pack(system_id, component_id, &msg, system_id, component_id, MAV_FRAME_LOCAL_NED, errs[0]/100.0, errs[1]/100.0, errs[2]/100.0, errs[3]*3.1415/180);
+          //x, y, z are all in meters because we are using the Ned coordinate system.
+          //yaw is in radians
+          //MAV_FRAME_LOCAL_NED give the following Z:down,x:north, y:east
+          //info about target_system and target_component at http://ardupilot.org/dev/docs/mavlink-routing-in-ardupilot.html
+          //pack the message for the local movement. the message will contain long, lat, and alt so we will need to update it in the loop.
+          //mavlink_msg_set_local_position_setpoint_send(comm,system_id, component_id, &msg, MAV_FRAME_LOCAL_NED, 100.0,100.0,100.0,0.0);
+          uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
+          Serial2.write(buf, len);
+          receve_msg();
+
         }
       }
       //TODO have some sort of watchdog or error check in case calculateObjPos
@@ -379,6 +444,9 @@ void loop()
         verifyFailCounter = 0;
         controllerState = STATE_PU_WAIT;
       }
+
+      //TODO need to enable autopilot mission?
+
       break;
     ////////////////////////////////////////////////////////////////////////////
     ///////////////////////////GO BACK TO THE TOP!//////////////////////////////
@@ -388,6 +456,54 @@ void loop()
    //delay if needed   
    delay(max(0, MIN_LOOP_PERIOD_MILLIS - (millis()-lastLoopTimeMillis) ));
    lastLoopTimeMillis = millis();
+}
+////////////////////////////////////////////////////////////////////////////////////////
+void receve_msg()
+{ //receive data over serial
+  // Serial.println(Serial2.available());
+  //  Serial.println(" ");
+  while (Serial2.available() > 0) {
+    mavlink_message_t msg;
+    mavlink_status_t status;
+    uint8_t rec =  Serial2.read();//Show bytes send from the pixhawk
+    //Serial.print("len = ");
+    //Serial.print(" Data = ");
+    //Serial.println(rec);
+    if (mavlink_parse_char(MAVLINK_COMM_0, rec, &msg, &status)) {
+
+      //Serial.println(" ");
+      //Serial.print("Mensaje: ");
+      //Serial.println(msg.msgid);
+      //mavlink_msg_request_data_stream_pack(system_id, component_id, &msg, received_sysid, received_compid, 63 , 1000, 1);
+      //mavlink_msg_set_local_position_setpoint_pack(system_id, component_id, &msg, system_id, component_id, MAV_FRAME_LOCAL_NED, 100.0, 100.0, 100.0, 0.0);
+      gcs_handleMessage(&msg);
+    }
+  }
+}
+
+void gcs_handleMessage(mavlink_message_t* msg) //read varaible
+{
+
+  //  Serial.println();
+  Serial.print("Message ID: ");
+  Serial.println(msg->msgid);
+  switch (msg->msgid) {
+    case MAVLINK_MSG_ID_SET_LOCAL_POSITION_SETPOINT:
+      mavlink_set_local_position_setpoint_t locationData;
+      Serial.write("I got a local position point set\n");
+      mavlink_msg_set_local_position_setpoint_decode(msg, &locationData);
+      Serial.println(locationData.x);
+      Serial.println(locationData.y);
+      Serial.println(locationData.z);
+      Serial.println(locationData.yaw);
+      Serial.println(locationData.target_system);
+      Serial.println(locationData.target_component);
+      Serial.println(locationData.coordinate_frame);
+
+      //Im thinking we need to print to the serial the to make sure that we have send the message and it was retrieved.
+      //this case will be able to execute local position commands with the long, lat, and alt.
+      break;
+  }
 }
 
 
