@@ -1,3 +1,10 @@
+
+//#include <checksum.h>
+#include <mavlink_types.h>
+#include <mavlink.h>
+#include <protocol.h>
+#include <math.h>
+
 /****IMPORTANT STUFF****/
 
 //TODO probably need a way to read current yaw from drone to align the camera data to the drone's coordinate
@@ -16,28 +23,32 @@
 */
 
 /* Variables for Controller State Machine */
-const int THRESHOLD_X = 2;
-const int THRESHOLD_Y = 2;
-const int THRESHOLD_Z = 2;
-const int THRESHOLD_Theta = 2;
-const int CARRYING_PACKAGE_MIN_CM = 30;
-const int CARRYING_PACKAGE_MAX_CM = 50;
+const int THRESHOLD_X = 3;//tolerances +/- the given threshold
+const int THRESHOLD_Y = 3;
+const int THRESHOLD_Z = 1.5;
+const int THRESHOLD_Theta = 15;
+const int CARRYING_PACKAGE_MIN_CM = 53;
+const int CARRYING_PACKAGE_MAX_CM = 57;
 
 const int STATE_INIT = 0;
-
 const int STATE_PU_WAIT = 1;
 const int STATE_PU_SETPT = 2;
-const int STATE_PU_VERIFY = 3;
-const int PU_SETPT_COUNT = 4;
-const int PU_SETPTS[PU_SETPT_COUNT][4]={{0,0,0,0},{0,0,0,0},{0,0,0,0},{0,0,0,0}};
+const int STATE_PU_RAISE = 3;
+const int STATE_PU_VERIFY = 4;
+const int PU_SETPT_COUNT =  3;
+const float PU_X_TOL_CM = 2;// +/- tolerance
+const float PU_Y_TOL_CM = 2;
+const float PU_Z_TOL_CM = 0.5;
+const float PU_YAW_TOL_DEG = 10;
+const int PU_SETPTS[PU_SETPT_COUNT][4]={{5,2,70,90},{5,2,53,90},{-9,2,53,90}};
 
-const int STATE_DO_WAIT = 4;
-const int STATE_DO_SETPT = 5;
-const int STATE_DO_VERIFY = 6;
+const int STATE_DO_WAIT = 5;
+const int STATE_DO_SETPT = 6;
+const int STATE_DO_VERIFY = 7;
 const int DO_SETPT_COUNT = 4;
-const int DO_SETPTS[DO_SETPT_COUNT][4]={{0,0,0,0},{0,0,0,0},{0,0,0,0},{0,0,0,0}};
+const int DO_SETPTS[DO_SETPT_COUNT][4]={{3,4,70,90},{3,4,49,90},{-3,-4,49,90},{-3,-4,70,90}};
 
-int controllerState = STATE_PU_WAIT;
+int controllerState = STATE_DO_WAIT;
 int verifyFailCounter = 0;
 int currentSetptIndex = 0;
 float objPos[4];
@@ -46,11 +57,6 @@ float errs[4];
 /*
 * Mavlink communication stuff
 */
-#include <checksum.h>
-#include <mavlink_types.h>
-#include <mavlink.h>
-#include <protocol.h>
-#include <math.h>
 
 uint8_t system_id = 100;
 uint8_t component_id = MAV_COMP_ID_IMU;
@@ -89,7 +95,7 @@ int a = 0;
 
 #include <Wire.h>
 
-const long MIN_LOOP_PERIOD_MILLIS = 20;
+const long MIN_LOOP_PERIOD_MILLIS = 2000;
 long lastLoopTimeMillis = 0;
 
 /* For IR Camera */ 
@@ -166,7 +172,7 @@ void readMasterIRCamera()
     Iy[3] += (s & 0xC0) <<2;
 
     //print all the coordinates
-    Serial.println("coordinates");
+   /* Serial.println("coordinates");
     for(i=0; i<4; i++)
     {
       Serial.print( int(Ix[i]) );
@@ -176,7 +182,7 @@ void readMasterIRCamera()
         Serial.print(",");
     }
     
-    Serial.println(""); 
+    Serial.println(""); */
 }
 
 /*
@@ -198,7 +204,7 @@ void readSlaveIRCamera()
       value = Serial1.read() | (Serial1.read() << 8);
       Iy2[i] = value;
     }
-    Serial.println("coordinates2");
+   /* Serial.println("coordinates2");
     for(i=0; i<4; i++)
     {
       Serial.print( int(Ix2[i]) );
@@ -207,7 +213,7 @@ void readSlaveIRCamera()
       if (i<3)
         Serial.print(",");
     }
-    Serial.println();
+    Serial.println();*/
 }
 
 /*
@@ -234,6 +240,7 @@ void setup()
     
     delay(100);
     lastLoopTimeMillis = millis();
+    Serial.println("Hi");
 }
 /*
 * Returns true on success; false on failure.
@@ -250,18 +257,18 @@ boolean calculateObjPos(int Ix[], int Iy[])
     {
       float objDist = fullFrameDistanceCm * frameSizePix/
 	sqrt(((long)Iy[0]-Iy[1])*(Iy[0]-Iy[1]) + ((long)Ix[0]-Ix[1])*(Ix[0]-Ix[1]));
-      Serial.print("Object distance (cm): ");Serial.println(objDist);
-      Serial.println(sqrt(((long)Iy[0]-Iy[1])*(Iy[0]-Iy[1]) + ((long)Ix[0]-Ix[1])*(Ix[0]-Ix[1])));
+      //Serial.print("Object distance (cm): ");Serial.println(objDist);
+      //Serial.println(sqrt(((long)Iy[0]-Iy[1])*(Iy[0]-Iy[1]) + ((long)Ix[0]-Ix[1])*(Ix[0]-Ix[1])));
       
       //horizontal distance in frame
       float centerX = (Ix[0]+Ix[1])/2.0f;
       float errXCm = -tan((centerX-1023/2)/pixPerDegree*3.141592/180)*objDist;
-      Serial.print("X Planar Distance (cm): ");Serial.println(errXCm);
+      //Serial.print("X Planar Distance (cm): ");Serial.println(errXCm);
        
       //vertical distance in frame
       float centerY = (Iy[0]+Iy[1])/2.0f;
       float errYCm = tan((centerY - 768/2)/pixPerDegree*3.141592/180)*objDist;
-      Serial.print("Y Planar Distance (cm): ");Serial.println(errYCm);
+      //Serial.print("Y Planar Distance (cm): ");Serial.println(errYCm);
       
       //orientation
       float angX = -(Ix[1] - Ix[0]);
@@ -271,7 +278,7 @@ boolean calculateObjPos(int Ix[], int Iy[])
       //beacons are rotated by 180 degrees
       //The angle is in degrees from the positive x axis
       float angleDeg = atan(angY/angX) * 180/3.141592;
-      Serial.print("Angle: ");Serial.print(angleDeg);Serial.println(" deg.");
+      //Serial.print("Angle: ");Serial.print(angleDeg);Serial.println(" deg.");
 
       objPos[0] = errXCm;
       objPos[1] = errYCm;
@@ -288,23 +295,23 @@ void loop()
 {
   readMasterIRCamera();
   readSlaveIRCamera();
-
    mavlink_message_t msg;
   uint8_t buf[MAVLINK_MAX_PACKET_LEN];
 
    //TODO? Define the system type (see mavlink_types.h for list of possible types)
 
   // mavlink_msg_heartbeat_pack(system_id, component_id, &msg, type, autopilot, MAV_MODE_GUIDED_DISARMED, 0, MAV_STATE_ACTIVE);
-
   switch(controllerState)
   {
     ////////////////////////////////////////////////////////////////////////////
     ///////////////////////////////LOOK FOR PACKAGE/////////////////////////////
     ////////////////////////////////////////////////////////////////////////////
     case STATE_PU_WAIT:
+      Serial.println("Waiting for Package to Pickup");
       //TODO need more sophisticated check??
       if(Ix[0] != 1023 && Ix[1] != 1023 && Iy[0] != 1023 && Iy[1] != 1023)
       {
+        Serial.println("Found Package!");
         controllerState = STATE_PU_SETPT;
         currentSetptIndex = 0;
         //TODO need to disable autopilot mission?
@@ -325,33 +332,55 @@ void loop()
         errs[1] = PU_SETPTS[currentSetptIndex][1] - objPos[1];
         errs[2] = PU_SETPTS[currentSetptIndex][2] - objPos[2];
         errs[3] = PU_SETPTS[currentSetptIndex][3] - objPos[3];
+        if(abs(errs[3] + 180) < abs(errs[3]))//allow angle to wrap between +90/-89.9
+          errs[3] = errs[3]+180;
+        if(abs(errs[3] - 180) < abs(errs[3]))
+          errs[3] = errs[3]-180;
 
+        Serial.print("Setpoint number ");Serial.println(currentSetptIndex);
+        Serial.println("Need to move drone:");
+        Serial.print("  ");Serial.print(-errs[0]);Serial.println(" cm left");
+        Serial.print("  ");Serial.print(-errs[1]);Serial.println(" cm forewards");        
+        Serial.print("  ");Serial.print(-errs[2]);Serial.println(" cm downwards");    
+        Serial.print("  ");Serial.print(errs[3]);Serial.println(" degrees ccw");  
+  
         //if at setpoint (within threshold)
         if(abs(errs[0]) < THRESHOLD_X && abs(errs[1]) < THRESHOLD_Y
           && abs(errs[2]) < THRESHOLD_Z && abs(errs[3]) < THRESHOLD_Theta)
         {
+          Serial.print("Arrived at setpoint ");Serial.println(currentSetptIndex);
           currentSetptIndex ++;   
           if(currentSetptIndex == PU_SETPT_COUNT)
-            controllerState = STATE_PU_VERIFY;
+            controllerState = STATE_PU_RAISE;
         }
         else
         {
+          
           //TODO make sure data is corrected for camera angle relative to compass?
-          mavlink_msg_set_local_position_setpoint_pack(system_id, component_id, &msg, system_id, component_id, MAV_FRAME_LOCAL_NED, errs[0]/100.0, errs[1]/100.0, errs[2]/100.0, errs[3]*3.1415/180);
+          //mavlink_msg_set_local_position_setpoint_pack(system_id, component_id, &msg, system_id, component_id, MAV_FRAME_LOCAL_NED, -errs[1]/100.0, -errs[0]/100.0, -errs[2]/100.0, (errs[3])*3.1415/180);
           //x, y, z are all in meters because we are using the Ned coordinate system.
           //yaw is in radians
           //MAV_FRAME_LOCAL_NED give the following Z:down,x:north, y:east
           //info about target_system and target_component at http://ardupilot.org/dev/docs/mavlink-routing-in-ardupilot.html
           //pack the message for the local movement. the message will contain long, lat, and alt so we will need to update it in the loop.
           //mavlink_msg_set_local_position_setpoint_send(comm,system_id, component_id, &msg, MAV_FRAME_LOCAL_NED, 100.0,100.0,100.0,0.0);
-          uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
-          Serial2.write(buf, len);
-          receve_msg();
+          //uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
+          //Serial2.write(buf, len);
+          //receve_msg();
+          }
         }
-      }
+        else
+          Serial.println("Camera obstructed");
       //TODO have some sort of watchdog or error check in case calculateObjPos
       //maybe even reset cameera if it doesn't seem to be working right
       //fails too much
+      break;
+      //TODO insert PU_RAISE state to make drone go up for a few secs before entering PU_VERIFY
+    case STATE_PU_RAISE:
+    
+      Serial.println("Raise drone 30 cm");   
+      //mavlink_msg_set_local_position_setpoint_pack(system_id, component_id, &msg, system_id, component_id, MAV_FRAME_LOCAL_NED, 0, 0, -0.3,0);
+      controllerState = STATE_PU_VERIFY;
       break;
     ////////////////////////////////////////////////////////////////////////////
     //////////////////////////VERIFY PICKUP SUCCESS/////////////////////////////
@@ -359,17 +388,19 @@ void loop()
     case STATE_PU_VERIFY:
       //check whether drone has package at hook height
       if(calculateObjPos(Ix, Iy) && objPos[2] > CARRYING_PACKAGE_MIN_CM 
-        && objPos[2] > CARRYING_PACKAGE_MAX_CM)
+        && objPos[2] < CARRYING_PACKAGE_MAX_CM)
       {
         //if package
         verifyFailCounter = 0;
         controllerState = STATE_DO_WAIT;
+        Serial.println("Pickup Successful!");
       }
       else
       {
         //if no package
         verifyFailCounter+=1;
         controllerState = STATE_PU_WAIT;
+        Serial.print("Pickup Failed :( ");Serial.print(verifyFailCounter);Serial.println(" consecutive failures");
       }
 
       //TODO need to enable autopilot mission?
@@ -379,11 +410,13 @@ void loop()
     //////////////////////////LOOK FOR LANDING PAD//////////////////////////////
     ////////////////////////////////////////////////////////////////////////////
     case STATE_DO_WAIT:
+      Serial.println("Waiting for drop off zone");
       //TODO need more sophisticated check??
       if(Ix2[0] != 1023 && Ix2[1] != 1023 && Iy2[0] != 1023 && Iy2[1] != 1023)
       {
         controllerState = STATE_DO_SETPT;
         currentSetptIndex = 0;
+        Serial.println("Found drop off zone!");
         //TODO need to disable autopilot mission?
       }
       break;
@@ -394,37 +427,50 @@ void loop()
       //read ir camera
       if(calculateObjPos(Ix2, Iy2))
       {
-        errs[0] = PU_SETPTS[currentSetptIndex][0] - objPos[0];
-        errs[1] = PU_SETPTS[currentSetptIndex][1] - objPos[1];
-        errs[2] = PU_SETPTS[currentSetptIndex][2] - objPos[2];
-        errs[3] = PU_SETPTS[currentSetptIndex][3] - objPos[3];
-        
+        errs[0] = DO_SETPTS[currentSetptIndex][0] - objPos[0];
+        errs[1] = DO_SETPTS[currentSetptIndex][1] - objPos[1];
+        errs[2] = DO_SETPTS[currentSetptIndex][2] - objPos[2];
+        errs[3] = DO_SETPTS[currentSetptIndex][3] - objPos[3];
+        if(abs(errs[3] + 180) < abs(errs[3]))//allow angle to wrap between +90/-89.9
+          errs[3] = errs[3]+180;
+        if(abs(errs[3] - 180) < abs(errs[3]))
+          errs[3] = errs[3]-180;
+          
+        Serial.print("Setpoint number ");Serial.println(currentSetptIndex);
+        Serial.println("Need to move drone:");
+        Serial.print("  ");Serial.print((errs[0]*cos(0.96)+errs[1]*sin(0.96)));Serial.println(" cm left");
+        Serial.print("  ");Serial.print(-(errs[0]*sin(.96)-errs[1]*cos(0.96)));Serial.println(" cm forewards");        
+        Serial.print("  ");Serial.print(-errs[2]);Serial.println(" cm downwards");    
+        Serial.print("  ");Serial.print(errs[3]);Serial.println(" degrees ccw");  
+
         //if at setpoint (within threshold)
         if(abs(errs[0]) < THRESHOLD_X && abs(errs[1]) < THRESHOLD_Y
           && abs(errs[2]) < THRESHOLD_Z && abs(errs[3]) < THRESHOLD_Theta)
         {
+          Serial.print("Arrived at setpoint ");Serial.println(currentSetptIndex);
           currentSetptIndex ++;   
           if(currentSetptIndex == DO_SETPT_COUNT)
             controllerState = STATE_DO_VERIFY;
         }else
         {
           //TODO make sure data is corrected for camera angle relative to compass?
-          mavlink_msg_set_local_position_setpoint_pack(system_id, component_id, &msg, system_id, component_id, MAV_FRAME_LOCAL_NED, errs[0]/100.0, errs[1]/100.0, errs[2]/100.0, errs[3]*3.1415/180);
+          //mavlink_msg_set_local_position_setpoint_pack(system_id, component_id, &msg, system_id, component_id, MAV_FRAME_LOCAL_NED, errs[0]/100.0, errs[1]/100.0, errs[2]/100.0, errs[3]*3.1415/180);
           //x, y, z are all in meters because we are using the Ned coordinate system.
           //yaw is in radians
           //MAV_FRAME_LOCAL_NED give the following Z:down,x:north, y:east
           //info about target_system and target_component at http://ardupilot.org/dev/docs/mavlink-routing-in-ardupilot.html
           //pack the message for the local movement. the message will contain long, lat, and alt so we will need to update it in the loop.
           //mavlink_msg_set_local_position_setpoint_send(comm,system_id, component_id, &msg, MAV_FRAME_LOCAL_NED, 100.0,100.0,100.0,0.0);
-          uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
-          Serial2.write(buf, len);
-          receve_msg();
+          //uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
+          //Serial2.write(buf, len);
+          //receve_msg();
 
         }
       }
+      else
+        Serial.println("Camera Obstructed");
       //TODO have some sort of watchdog or error check in case calculateObjPos
       //fails too much
-
       break;
     ////////////////////////////////////////////////////////////////////////////
     /////////////////////////VERIFY DROP OFF SUCCESS////////////////////////////
@@ -432,17 +478,19 @@ void loop()
     case STATE_DO_VERIFY:
       //check whether drone has package at hook height
       if(calculateObjPos(Ix, Iy) && objPos[2] > CARRYING_PACKAGE_MIN_CM 
-        && objPos[2] > CARRYING_PACKAGE_MAX_CM)
+        && objPos[2] < CARRYING_PACKAGE_MAX_CM)
       {
         //if package
         verifyFailCounter+=1;
         controllerState = STATE_DO_WAIT;
+        Serial.println("Drop off Failed");
       }
       else
       {
         //if no package
         verifyFailCounter = 0;
         controllerState = STATE_PU_WAIT;
+        Serial.println("Drop off Successful");
       }
 
       //TODO need to enable autopilot mission?
@@ -457,6 +505,7 @@ void loop()
    delay(max(0, MIN_LOOP_PERIOD_MILLIS - (millis()-lastLoopTimeMillis) ));
    lastLoopTimeMillis = millis();
 }
+
 ////////////////////////////////////////////////////////////////////////////////////////
 void receve_msg()
 { //receive data over serial
